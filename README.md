@@ -4,7 +4,13 @@
 
 ```bash
 sudo apt install sing-box_<x.xx.x>_amd64.deb
+sudo apt install sing-box_<x.xx.x>_arm64.deb
 ```
+
+GitHub Releases publish both Debian architectures for each synced sing-box tag:
+
+- `sing-box_<version>_amd64.deb`
+- `sing-box_<version>_arm64.deb`
 
 ## Build
 

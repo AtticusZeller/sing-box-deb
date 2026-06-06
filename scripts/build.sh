@@ -3,8 +3,6 @@
 # Exit on error
 set -e
 
-
-
 # Get the latest tag
 LATEST_TAG=$1
 DEB_ARCH=${2:-$(dpkg --print-architecture)}

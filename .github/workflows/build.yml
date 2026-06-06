@@ -2,8 +2,18 @@ name: Build and Package sing-box
 
 on:
   schedule:
-    - cron: '0 0 * * *'  
-  workflow_dispatch:      
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: sing-box tag to build, for example v1.11.15. Leave empty to use the latest release.
+        required: false
+        type: string
+      force_update:
+        description: Rebuild and update the release even if this repository already has the tag.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -12,22 +22,36 @@ jobs:
   check:
     runs-on: ubuntu-latest
     outputs:
-      should_build: ${{ steps.check_version.outputs.EXISTS == 'false' }}
+      should_build: ${{ steps.check_version.outputs.should_build }}
       version: ${{ steps.check_version.outputs.version }}
     steps:
-      - uses: actions/checkout@v2
-      
+      - uses: actions/checkout@v4
+
       - name: Check latest version
         id: check_version
         run: |
-          LATEST_VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+          REQUESTED_VERSION="${{ inputs.version }}"
+          FORCE_UPDATE="${{ inputs.force_update }}"
+
+          if [ -n "$REQUESTED_VERSION" ]; then
+            LATEST_VERSION="$REQUESTED_VERSION"
+          else
+            LATEST_VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+          fi
+
           echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_ENV
           echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          
-          if git ls-remote --tags origin | grep -q $LATEST_VERSION; then
-            echo "EXISTS=true" >> $GITHUB_OUTPUT
+
+          if git ls-remote --tags --exit-code origin "refs/tags/$LATEST_VERSION" >/dev/null; then
+            EXISTS=true
           else
-            echo "EXISTS=false" >> $GITHUB_OUTPUT
+            EXISTS=false
+          fi
+
+          if [ "$EXISTS" = "false" ] || [ "$FORCE_UPDATE" = "true" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
           fi
 
   build:
@@ -35,7 +59,7 @@ jobs:
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -55,13 +79,15 @@ jobs:
 
       - name: Build sing-box
         run: |
-          chmod +x scripts/build.sh
-          sudo ./scripts/build.sh ${{ env.sing_box_VERSION }}
+          for arch in amd64 arm64; do
+            bash scripts/build.sh "${{ env.sing_box_VERSION }}" "$arch"
+          done
 
       - name: Package sing-box
         run: |
-          chmod +x scripts/package.sh
-          sudo ./scripts/package.sh ${{ env.sing_box_VERSION }}
+          for arch in amd64 arm64; do
+            bash scripts/package.sh "${{ env.sing_box_VERSION }}" "$arch"
+          done
 
       - name: Create Git tag
         run: |
@@ -70,14 +96,19 @@ jobs:
           git tag -f "${{ env.sing_box_VERSION }}"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: sing-box_*.deb
+          fail_on_unmatched_files: true
+          overwrite_files: true
           tag_name: ${{ env.sing_box_VERSION }}
           name: ${{ env.sing_box_VERSION }}
           body: |
-            sing-box DEB package for version ${{ env.sing_box_VERSION }}
+            sing-box DEB packages for version ${{ env.sing_box_VERSION }}
+
+            - amd64
+            - arm64
           draft: false
           prerelease: false

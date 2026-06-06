@@ -2,15 +2,38 @@
 set -e
 
 VERSION=$1
-ARCH=$(dpkg --print-architecture)
+ARCH=${2:-$(dpkg --print-architecture)}
+
+if [ -z "$VERSION" ]; then
+  echo "Usage: $0 <tag> [amd64|arm64]"
+  exit 1
+fi
+
+case "$ARCH" in
+  amd64 | arm64)
+    ;;
+  *)
+    echo "Unsupported architecture: $ARCH"
+    echo "Supported architectures: amd64, arm64"
+    exit 1
+    ;;
+esac
+
+BINARY="bin/sing-box-${ARCH}"
+if [ ! -f "$BINARY" ]; then
+  echo "Missing binary: $BINARY"
+  echo "Run scripts/build.sh $VERSION $ARCH first."
+  exit 1
+fi
 
 # mkdir package directory
-PACKAGE_DIR="sing-box-package"
+PACKAGE_DIR="sing-box-package-${ARCH}"
+rm -rf "$PACKAGE_DIR"
 mkdir -p "$PACKAGE_DIR/DEBIAN"
 mkdir -p "$PACKAGE_DIR/usr/bin"
 
 # copy binary
-cp bin/sing-box "$PACKAGE_DIR/usr/bin/"
+cp "$BINARY" "$PACKAGE_DIR/usr/bin/sing-box"
 
 # control
 cat >"$PACKAGE_DIR/DEBIAN/control" <<EOF
